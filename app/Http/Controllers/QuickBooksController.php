@@ -6,7 +6,9 @@ use Illuminate\Http\Request;
 use QuickBooksOnline\API\DataService\DataService;
 use App\Models\QuickBooksToken;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\Log;
 
 class QuickBooksController extends Controller
 {
@@ -23,8 +25,6 @@ class QuickBooksController extends Controller
         ]);
 
         $OAuth2LoginHelper = $dataService->getOAuth2LoginHelper();
-
-        // Ensure the authorization URL is a string
         $authUrl = (string) $OAuth2LoginHelper->getAuthorizationCodeURL();
 
         return redirect($authUrl);
@@ -59,33 +59,43 @@ class QuickBooksController extends Controller
             // Exchange authorization code for an access token
             $accessTokenObj = $OAuth2LoginHelper->exchangeAuthorizationCodeForToken($code, $realmId);
 
-            // QuickBooks tokens expire in 60 minutes
-            $expiresAt = now()->addMinutes(60);
+            // Encrypt refresh token and realm ID for security
+            $encryptedRealmId = Crypt::encryptString((string) $realmId);
+            $encryptedRefreshToken = Crypt::encryptString((string) $accessTokenObj->getRefreshToken());
 
             // Store tokens in the database
             QuickBooksToken::updateOrCreate(
-                ['realm_id' => $realmId],
+                ['realm_id' => $encryptedRealmId],
                 [
                     'access_token'  => $accessTokenObj->getAccessToken(),
-                    'refresh_token' => $accessTokenObj->getRefreshToken(),
-                    'expires_at'    => $expiresAt
+                    'refresh_token' => $encryptedRefreshToken,
+                    'expires_at'    => now()->addMinutes(60)
                 ]
             );
 
-            return redirect()->route('qbo.reports')->with('success', 'QuickBooks Connected!');
+            // Ensure the route exists before redirecting
+            if (\Route::has('qbo.reports')) {
+                return redirect()->route('qbo.reports')->with('success', 'QuickBooks Connected!');
+            } else {
+                return redirect('/')->with('success', 'QuickBooks Connected!');
+            }
+
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to exchange token', 'message' => $e->getMessage()], 400);
+            \Log::error('QuickBooks Token Exchange Failed: ' . $e->getMessage());
+
+            return response()->json([
+                'error'   => 'Failed to exchange token',
+                'message' => $e->getMessage()
+            ], 400);
         }
     }
 
-
-
+    // Disconnect from QuickBooks
     public function disconnect()
-{
-    // Remove QuickBooks Token from Database
-    QuickBooksToken::truncate();
+    {
+        // Remove QuickBooks Token from Database
+        QuickBooksToken::truncate();
 
-    return view('qbo.disconnected')->with('message', 'You have successfully disconnected QuickBooks.');
-}
-
+        return redirect()->route('qbo.reports')->with('success', 'You have successfully disconnected QuickBooks.');
+    }
 }
