@@ -22,89 +22,102 @@ class QuickBooksReportController extends Controller
 
     // Fetch QuickBooks report and return JSON (Auto-refresh token)
     public function fetchReport(Request $request, $reportName)
-    {
-        $token = QuickBooksToken::first();
+{
+    $token = QuickBooksToken::first();
 
-        if (!$token) {
-            return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
-        }
-
-        // Decrypt stored credentials
-        $realmId = Crypt::decryptString($token->realm_id);
-        $accessToken = $token->access_token;
-
-        // Check if token is expired and refresh if needed
-        if (Carbon::now()->greaterThan($token->expires_at)) {
-            if (!$this->refreshToken()) {
-                return response()->json(['error' => 'Failed to refresh token'], 401);
-            }
-            $token = QuickBooksToken::first(); // Reload updated token
-            $accessToken = $token->access_token;
-        }
-
-        $url = "https://quickbooks.api.intuit.com/v3/company/{$realmId}/reports/{$reportName}";
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $accessToken,
-            'Accept' => 'application/json'
-        ])->get($url);
-
-        if ($response->failed()) {
-            return response()->json(['error' => 'Failed to fetch report', 'details' => $response->json()], 400);
-        }
-
-        return response()->json([
-            'message' => 'Report fetched successfully',
-            'data' => $response->json()
-        ]);
+    if (!$token) {
+        return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
     }
+
+    // Decrypt stored credentials
+    $realmId = Crypt::decryptString($token->realm_id);
+    $accessToken = $token->access_token;
+
+    // Check if token is expired and refresh if needed
+    if (Carbon::now()->greaterThan($token->expires_at)) {
+        if (!$this->refreshToken()) {
+            return response()->json(['error' => 'Failed to refresh token'], 401);
+        }
+        $token = QuickBooksToken::first(); // Reload updated token
+        $accessToken = $token->access_token;
+    }
+
+    $url = "https://quickbooks.api.intuit.com/v3/company/{$realmId}/reports/{$reportName}";
+
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $accessToken,
+        'Accept' => 'application/json'
+    ])->get($url);
+
+    $intuitTid = $response->header('intuit_tid'); // Capture Intuit Transaction ID
+
+    if ($response->failed()) {
+        return response()->json([
+            'error' => 'Failed to fetch report',
+            'details' => $response->json(),
+            'intuit_tid' => $intuitTid // Include Intuit Transaction ID
+        ], 400);
+    }
+
+    return response()->json([
+        'message' => 'Report fetched successfully',
+        'data' => $response->json(),
+        'intuit_tid' => $intuitTid // Include Intuit Transaction ID
+    ]);
+}
 
     // Fetch the report live for the Blade page
     public function fetchReportLive(Request $request)
-    {
-        $reportName = $request->input('report_name');
-        $startDate = $request->input('start_date');
-        $endDate = $request->input('end_date');
+{
+    $reportName = $request->input('report_name');
+    $startDate = $request->input('start_date');
+    $endDate = $request->input('end_date');
 
-        $token = QuickBooksToken::first();
-        if (!$token) {
-            return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
-        }
-
-        // Decrypt stored credentials
-        $realmId = Crypt::decryptString($token->realm_id);
-        $accessToken = $token->access_token;
-
-        // Check if token is expired and refresh if needed
-        if (Carbon::now()->greaterThan($token->expires_at)) {
-            if (!$this->refreshToken()) {
-                return response()->json(['error' => 'Failed to refresh token'], 401);
-            }
-            $token = QuickBooksToken::first(); // Reload updated token
-            $accessToken = $token->access_token;
-        }
-
-        $url = "https://quickbooks.api.intuit.com/v3/company/{$realmId}/reports/{$reportName}";
-
-        // Append date filters if provided
-        $queryParams = [];
-        if ($startDate) $queryParams['start_date'] = $startDate;
-        if ($endDate) $queryParams['end_date'] = $endDate;
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $accessToken,
-            'Accept' => 'application/json'
-        ])->get($url, $queryParams);
-
-        if ($response->failed()) {
-            return response()->json(['error' => 'Failed to fetch report', 'details' => $response->json()], 400);
-        }
-
-        return response()->json([
-            'message' => 'Report fetched successfully',
-            'data' => $response->json()
-        ]);
+    $token = QuickBooksToken::first();
+    if (!$token) {
+        return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
     }
+
+    // Decrypt stored credentials
+    $realmId = Crypt::decryptString($token->realm_id);
+    $accessToken = $token->access_token;
+
+    // Check if token is expired and refresh if needed
+    if (Carbon::now()->greaterThan($token->expires_at)) {
+        if (!$this->refreshToken()) {
+            return response()->json(['error' => 'Failed to refresh token'], 401);
+        }
+        $token = QuickBooksToken::first(); // Reload updated token
+        $accessToken = $token->access_token;
+    }
+
+    $url = "https://quickbooks.api.intuit.com/v3/company/{$realmId}/reports/{$reportName}";
+
+    $queryParams = [];
+    if ($startDate) $queryParams['start_date'] = $startDate;
+    if ($endDate) $queryParams['end_date'] = $endDate;
+
+    $response = Http::withHeaders([
+        'Authorization' => 'Bearer ' . $accessToken,
+        'Accept' => 'application/json'
+    ])->get($url, $queryParams);
+
+    $intuitTid = $response->header('intuit_tid'); // Capture Intuit Transaction ID
+
+    if ($response->failed()) {
+        return response()->json([
+            'error' => 'Failed to fetch report',
+            'details' => $response->json(),
+            'intuit_tid' => $intuitTid // Include Intuit Transaction ID
+        ], 400);
+    }
+
+    return response()->json([
+        'message' => 'Report fetched successfully',
+        'data' => $response->json(),
+        'intuit_tid' => $intuitTid // Include Intuit Transaction ID
+    ]);
+}
 
     // Refresh QuickBooks Access Token with encryption
     private function refreshToken()
