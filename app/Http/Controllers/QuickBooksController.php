@@ -44,7 +44,7 @@ class QuickBooksController extends Controller
         if (!$code || !$realmId) {
             return response()->json(['error' => 'Missing authorization parameters from QuickBooks'], 400);
         }
-
+        
         $dataService = DataService::Configure([
             'auth_mode'       => 'oauth2',
             'ClientID'        => env('QBO_CLIENT_ID'),
