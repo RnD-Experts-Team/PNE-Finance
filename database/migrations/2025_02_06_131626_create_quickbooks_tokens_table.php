@@ -9,7 +9,7 @@ return new class extends Migration {
     {
         Schema::create('quickbooks_tokens', function (Blueprint $table) {
             $table->id();
-            $table->string('realm_id')->unique();
+            $table->text('realm_id')->unique();
             $table->text('access_token');
             $table->text('refresh_token');
             $table->timestamp('expires_at'); // Token expiration time
