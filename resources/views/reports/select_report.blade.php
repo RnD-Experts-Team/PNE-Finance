@@ -99,6 +99,10 @@
                             Export to DataWarehouse
                         </button>
 
+                        <button id="exportWithCategory" class="mt-2 ml-2 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 dark:hover:bg-blue-400">
+                            ExportWithCategory
+                        </button>
+
                         <div class="overflow-x-auto mt-4">
                             <table id="reportTable" class="min-w-full table-auto border border-gray-300 dark:border-gray-700 shadow-sm rounded-md">
 
@@ -267,6 +271,48 @@ $("#exportToDataWarehouse").click(function () {
         downloadLink.href = URL.createObjectURL(csvFile);
         downloadLink.click();
     });
+
+
+
+    $("#exportWithCategory").click(function () {
+    var csv = [];
+    var rows = $("#reportTable tr");
+    var currentCategory = ""; // Store the current category
+
+    rows.each(function () {
+        var rowData = [];
+        var firstCell = $(this).find("td, th").first().text().trim();
+
+        // If row is a category header (no date but meaningful text)
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell) && firstCell.length > 0) {
+            currentCategory = firstCell; // Update category
+            return; // Skip category header itself
+        }
+
+        // If row has a valid date, add it to CSV
+        if (/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
+            $(this).find("td, th").each(function () {
+                var cellText = $(this).text().trim();
+                rowData.push('"' + cellText.replace(/"/g, '""') + '"'); // Handle CSV escaping
+            });
+
+            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"'); // Append category column
+            csv.push(rowData.join(",")); // Join with commas
+        }
+    });
+
+    if (csv.length === 0) {
+        alert("No valid data available for export.");
+        return;
+    }
+
+    var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+    var downloadLink = document.createElement("a");
+    downloadLink.download = "Data_With_Category.csv";
+    downloadLink.href = URL.createObjectURL(csvFile);
+    downloadLink.click();
+});
+
         });
         </script>
 
