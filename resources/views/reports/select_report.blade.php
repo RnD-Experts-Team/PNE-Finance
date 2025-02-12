@@ -56,6 +56,7 @@
                             <select id="report_name" name="report_name" class="mt-1 block w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500">
                                 <option value="BalanceSheet">Balance Sheet</option>
                                 <option value="ProfitAndLoss">Profit & Loss</option>
+                                <option value="ProfitAndLossDetail">Profit & Loss Details</option>
                                 <option value="CashFlow">Cash Flow</option>
                                 <option value="TransactionList">Transaction List</option>
                                 <option value="CustomerIncome">Customer Income</option>
@@ -92,6 +93,10 @@
                         <p class="text-gray-700 dark:text-gray-300"><strong>Period:</strong> <span id="reportPeriod"></span></p>
                         <button id="downloadCsv" class="mt-2 px-4 py-2 bg-green-600 dark:bg-green-500 text-white font-semibold rounded-md shadow-sm hover:bg-green-700 dark:hover:bg-green-400">
                             Download CSV
+                        </button>
+
+                        <button id="exportToDataWarehouse" class="mt-2 ml-2 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 dark:hover:bg-blue-400">
+                            Export to DataWarehouse
                         </button>
 
                         <div class="overflow-x-auto mt-4">
@@ -203,28 +208,65 @@
 
             // ✅ Fixed CSV Download Function
             $("#downloadCsv").click(function () {
-                var csv = [];
-                var rows = $("#reportTable tr");
+    var csv = [];
+    var rows = $("#reportTable tr");
 
-                rows.each(function () {
-                    var rowData = [];
-                    $(this).find("td, th").each(function () {
-                        rowData.push($(this).text().trim());
-                    });
-                    csv.push(rowData.join(","));
-                });
+    rows.each(function () {
+        var rowData = [];
+        $(this).find("td, th").each(function () {
+            var cellText = $(this).text().trim();
+            // Wrap cell text in double quotes and escape any internal double quotes
+            rowData.push('"' + cellText.replace(/"/g, '""') + '"');
+        });
+        csv.push(rowData.join(",")); // Join with commas
+    });
 
-                if (csv.length === 0) {
-                    alert("No data available for download.");
-                    return;
-                }
+    if (csv.length === 0) {
+        alert("No data available for download.");
+        return;
+    }
 
-                var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
-                var downloadLink = document.createElement("a");
-                downloadLink.download = reportJsonData.Header.ReportName + ".csv";
-                downloadLink.href = URL.createObjectURL(csvFile);
-                downloadLink.click();
+    var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+    var downloadLink = document.createElement("a");
+    downloadLink.download = reportJsonData.Header.ReportName + ".csv";
+    downloadLink.href = URL.createObjectURL(csvFile);
+    downloadLink.click();
+});
+
+
+$("#exportToDataWarehouse").click(function () {
+        var csv = [];
+        var rows = $("#reportTable tr");
+
+        rows.each(function () {
+            var rowData = [];
+            var firstCell = $(this).find("td, th").first().text().trim();
+
+            // Check if the first column contains a valid date (YYYY-MM-DD format)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
+                return; // Skip this row if the first column is not a date
+            }
+
+            $(this).find("td, th").each(function () {
+                var cellText = $(this).text().trim();
+                // Wrap text in double quotes and escape internal quotes
+                rowData.push('"' + cellText.replace(/"/g, '""') + '"');
             });
+
+            csv.push(rowData.join(",")); // Join row with commas
+        });
+
+        if (csv.length === 0) {
+            alert("No valid data available for export.");
+            return;
+        }
+
+        var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+        var downloadLink = document.createElement("a");
+        downloadLink.download = "DataWarehouse_Export.csv";
+        downloadLink.href = URL.createObjectURL(csvFile);
+        downloadLink.click();
+    });
         });
         </script>
 
