@@ -285,7 +285,8 @@ $("#exportToDataWarehouse").click(function () {
 
         // If row is a category header (no date but meaningful text)
         if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell) && firstCell.length > 0) {
-            currentCategory = firstCell; // Update category
+            // Remove leading numbers and spaces from category name
+            currentCategory = firstCell.replace(/^\d+\s*/, "").trim();
             return; // Skip category header itself
         }
 
@@ -296,7 +297,7 @@ $("#exportToDataWarehouse").click(function () {
                 rowData.push('"' + cellText.replace(/"/g, '""') + '"'); // Handle CSV escaping
             });
 
-            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"'); // Append category column
+            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"'); // Append cleaned category column
             csv.push(rowData.join(",")); // Join with commas
         }
     });
@@ -312,6 +313,7 @@ $("#exportToDataWarehouse").click(function () {
     downloadLink.href = URL.createObjectURL(csvFile);
     downloadLink.click();
 });
+
 
         });
         </script>
