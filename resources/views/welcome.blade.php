@@ -314,7 +314,7 @@
             <div class="hero-text">
                 <h1>Revolutionize Your Finances with QuickBooks Integration</h1>
                 <p>Seamlessly manage your business finances and accounting with our powerful QuickBooks-integrated app.</p>
-                <a href="{{route("register")}}" class="cta-button">SignUp Now</a>
+                <a href="#" class="cta-button">SignUp Now</a>
             </div>
             <div class="hero-image">
                 <img src="{{asset("img\logo.png")}}" alt="">
