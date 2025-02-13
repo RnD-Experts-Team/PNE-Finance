@@ -244,7 +244,7 @@
 });
 
 
-$(document).ready(function () {
+
     // Show export button only when "Balance Sheet" is selected
     $("#report_name").change(function () {
         if ($(this).val() === "BalanceSheet") {
@@ -322,7 +322,7 @@ $(document).ready(function () {
         downloadLink.href = URL.createObjectURL(csvFile);
         downloadLink.click();
     });
-});
+
 
 
 
