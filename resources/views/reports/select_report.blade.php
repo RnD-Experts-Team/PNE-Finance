@@ -385,7 +385,7 @@ $("#exportToDataWarehouse").click(function () {
                 rowData.push('"' + cellText.replace(/"/g, '""') + '"');
             });
 
-            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"'); /
+            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"');
             csv.push(rowData.join(","));
         }
     });
@@ -401,9 +401,9 @@ $("#exportToDataWarehouse").click(function () {
     downloadLink.href = URL.createObjectURL(csvFile);
     downloadLink.click();
 });
+});
 
 
-        });
         </script>
 
 </x-app-layout>
