@@ -103,6 +103,12 @@
                             ExportWithCategory
                         </button>
 
+
+                        <button id="exportHierarchicalData" class="mt-2 px-4 py-2 bg-purple-600 dark:bg-purple-500 text-white font-semibold rounded-md shadow-sm hover:bg-purple-700 dark:hover:bg-purple-400 hidden">
+                             Export Balance Sheet
+                        </button>
+
+
                         <div class="overflow-x-auto mt-4">
                             <table id="reportTable" class="min-w-full table-auto border border-gray-300 dark:border-gray-700 shadow-sm rounded-md">
 
@@ -219,10 +225,10 @@
         var rowData = [];
         $(this).find("td, th").each(function () {
             var cellText = $(this).text().trim();
-            // Wrap cell text in double quotes and escape any internal double quotes
+
             rowData.push('"' + cellText.replace(/"/g, '""') + '"');
         });
-        csv.push(rowData.join(",")); // Join with commas
+        csv.push(rowData.join(","));
     });
 
     if (csv.length === 0) {
@@ -238,6 +244,88 @@
 });
 
 
+$(document).ready(function () {
+    // Show export button only when "Balance Sheet" is selected
+    $("#report_name").change(function () {
+        if ($(this).val() === "BalanceSheet") {
+            $("#exportHierarchicalData").removeClass("hidden");
+        } else {
+            $("#exportHierarchicalData").addClass("hidden");
+        }
+    });
+
+    $("#exportHierarchicalData").click(function () {
+        var csv = [];
+        var rows = $("#reportTable tr");
+        var categoryStack = []; // Stack to track category hierarchy
+        var maxDepth = 0; // Track the max hierarchy depth
+
+        // Get the year from the report period
+        var reportPeriod = $("#reportPeriod").text().trim();
+        var reportYear = reportPeriod.match(/\d{4}/); // Extract the first year
+        reportYear = reportYear ? reportYear[0] : ""; // Default to empty if not found
+
+        rows.each(function () {
+            var rowData = [];
+            var firstCell = $(this).find("td").first().text().trim();
+            var secondCell = $(this).find("td").eq(1).text().trim(); // Second column (value)
+
+            // If the row is a "Total" row, ignore it and remove last category
+            if (/^Total/i.test(firstCell)) {
+                categoryStack.pop();
+                return;
+            }
+
+            // If the row has only one column and is bold, it's a new category
+            if ($(this).find("td").length === 1 || secondCell === "") {
+                categoryStack.push(firstCell.replace(/^\d+\s*/, "").trim()); // Remove leading numbers
+                maxDepth = Math.max(maxDepth, categoryStack.length); // Track max depth
+                return;
+            }
+
+            // If it's a data row (contains both name and value)
+            if (firstCell.length > 0 && secondCell.length > 0) {
+                var categoryColumns = [...categoryStack]; // Copy stack for this row
+                while (categoryColumns.length < maxDepth) {
+                    categoryColumns.push(""); // Ensure uniform column count
+                }
+
+                // Add static columns
+                rowData.push('"PNE Pizza LLC"'); // Static company name
+                rowData.push('"' + reportYear + '"'); // Extracted report year
+
+                // Add hierarchy + account name + value
+                rowData.push(...categoryColumns.map(col => '"' + col.replace(/"/g, '""') + '"'));
+                rowData.push('"' + firstCell.replace(/"/g, '""') + '"'); // Account Name
+                rowData.push('"' + secondCell.replace(/"/g, '""') + '"'); // Value
+
+                csv.push(rowData.join(",")); // Join columns with commas
+            }
+        });
+
+        if (csv.length === 0) {
+            alert("No valid data available for export.");
+            return;
+        }
+
+        // Create CSV headers
+        var headers = ['Company Name', 'Year'];
+        for (var i = 1; i <= maxDepth; i++) {
+            headers.push("Level " + i);
+        }
+        headers.push("Account Name", "Value");
+        csv.unshift(headers.join(",")); // Add headers to CSV data
+
+        var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+        var downloadLink = document.createElement("a");
+        downloadLink.download = "Balance_Sheet_Export.csv";
+        downloadLink.href = URL.createObjectURL(csvFile);
+        downloadLink.click();
+    });
+});
+
+
+
 $("#exportToDataWarehouse").click(function () {
         var csv = [];
         var rows = $("#reportTable tr");
@@ -246,18 +334,18 @@ $("#exportToDataWarehouse").click(function () {
             var rowData = [];
             var firstCell = $(this).find("td, th").first().text().trim();
 
-            // Check if the first column contains a valid date (YYYY-MM-DD format)
+
             if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
-                return; // Skip this row if the first column is not a date
+                return;
             }
 
             $(this).find("td, th").each(function () {
                 var cellText = $(this).text().trim();
-                // Wrap text in double quotes and escape internal quotes
+
                 rowData.push('"' + cellText.replace(/"/g, '""') + '"');
             });
 
-            csv.push(rowData.join(",")); // Join row with commas
+            csv.push(rowData.join(","));
         });
 
         if (csv.length === 0) {
@@ -277,28 +365,28 @@ $("#exportToDataWarehouse").click(function () {
     $("#exportWithCategory").click(function () {
     var csv = [];
     var rows = $("#reportTable tr");
-    var currentCategory = ""; // Store the current category
+    var currentCategory = "";
 
     rows.each(function () {
         var rowData = [];
         var firstCell = $(this).find("td, th").first().text().trim();
 
-        // If row is a category header (no date but meaningful text)
+
         if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell) && firstCell.length > 0) {
-            // Remove leading numbers and spaces from category name
+
             currentCategory = firstCell.replace(/^\d+\s*/, "").trim();
-            return; // Skip category header itself
+            return;
         }
 
-        // If row has a valid date, add it to CSV
+
         if (/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
             $(this).find("td, th").each(function () {
                 var cellText = $(this).text().trim();
-                rowData.push('"' + cellText.replace(/"/g, '""') + '"'); // Handle CSV escaping
+                rowData.push('"' + cellText.replace(/"/g, '""') + '"');
             });
 
-            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"'); // Append cleaned category column
-            csv.push(rowData.join(",")); // Join with commas
+            rowData.push('"' + currentCategory.replace(/"/g, '""') + '"'); /
+            csv.push(rowData.join(","));
         }
     });
 
