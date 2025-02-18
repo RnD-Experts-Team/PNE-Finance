@@ -85,7 +85,7 @@
                         </div>
 
                         <button id="submitReport" type="submit"
-                            class="mt-4 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 dark:hover:bg-indigo-400 hidden" >
+                            class="mt-4 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 dark:hover:bg-indigo-400 hidden">
                             Get Report
                         </button>
                     </form>
@@ -145,309 +145,309 @@
 
 
 
-$(document).ready(function () {
-    var reportJsonData = null;
+        $(document).ready(function () {
+            var reportJsonData = null;
 
-    $("#report_name").change(function () {
-        if ($(this).val() != "0") {
-            $("#submitReport").removeClass("hidden");
-        } else {
-            $("#submitReport").addClass("hidden");
-        }
-    });
-
-
-    $("#reportForm").submit(function (event) {
-        event.preventDefault();
-        $("#loading").removeClass("hidden");
-        $("#reportResults").addClass("hidden");
-
-        var reportName = $("#report_name").val();
-        var startDate = $("#start_date").val();
-        var endDate = $("#end_date").val();
+            $("#report_name").change(function () {
+                if ($(this).val() != "0") {
+                    $("#submitReport").removeClass("hidden");
+                } else {
+                    $("#submitReport").addClass("hidden");
+                }
+            });
 
 
+            $("#reportForm").submit(function (event) {
+                event.preventDefault();
+                $("#loading").removeClass("hidden");
+                $("#reportResults").addClass("hidden");
 
-        $.ajax({
-            url: "{{ route('qbo.fetch.report') }}",
-            method: "POST",
-            data: {
-                report_name: reportName,
-                start_date: startDate,
-                end_date: endDate,
-                _token: "{{ csrf_token() }}"
-            },
-            success: function (response) {
+                var reportName = $("#report_name").val();
+                var startDate = $("#start_date").val();
+                var endDate = $("#end_date").val();
 
 
-                $("#loading").addClass("hidden");
 
-                if (response.error) {
-                    alert(response.error);
+                $.ajax({
+                    url: "{{ route('qbo.fetch.report') }}",
+                    method: "POST",
+                    data: {
+                        report_name: reportName,
+                        start_date: startDate,
+                        end_date: endDate,
+                        _token: "{{ csrf_token() }}"
+                    },
+                    success: function (response) {
+
+
+                        $("#loading").addClass("hidden");
+
+                        if (response.error) {
+                            alert(response.error);
+                            return;
+                        }
+
+                        reportJsonData = response.data;
+                        $("#reportTitle").text(reportJsonData.Header.ReportName);
+                        $("#reportPeriod").text(reportJsonData.Header.StartPeriod + " to " + reportJsonData.Header.EndPeriod);
+
+                        var rowsHtml = "";
+                        var headerHtml = "";
+
+                        if (reportJsonData.Columns && reportJsonData.Columns.Column) {
+                            reportJsonData.Columns.Column.forEach(function (col) {
+                                headerHtml += `<th class="border border-gray-300 dark:border-gray-700 p-2">${col.ColTitle}</th>`;
+                            });
+                        }
+
+                        function processRows(rows) {
+                            if (!rows || !rows.Row) return;
+
+                            rows.Row.forEach(function (section) {
+                                if (section.Header && section.Header.ColData) {
+                                    rowsHtml += `<tr><td colspan="${section.Header.ColData.length}" class="border border-gray-300 dark:border-gray-700 p-2"><strong>${section.Header.ColData[0]?.value || ''}</strong></td></tr>`;
+                                }
+
+                                if (section.Rows) {
+                                    processRows(section.Rows);
+                                }
+
+                                if (section.ColData) {
+                                    var rowData = section.ColData.map(function (col) {
+                                        return col.value || "";
+                                    });
+                                    rowsHtml += `<tr>${rowData.map(function (data) {
+                                        return `<td class="border border-gray-300 dark:border-gray-700 p-2">${data}</td>`;
+                                    }).join("")}</tr>`;
+                                }
+
+                                if (section.Summary && section.Summary.ColData) {
+                                    var summaryData = section.Summary.ColData.map(function (col) {
+                                        return col.value || "";
+                                    });
+                                    rowsHtml += `<tr class="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-200">${summaryData.map(function (data) {
+                                        return `<td class="border border-gray-300 dark:border-gray-700 p-2"><strong>${data}</strong></td>`;
+                                    }).join("")}</tr>`;
+                                }
+                            });
+                        }
+
+                        if (reportJsonData.Rows) {
+                            processRows(reportJsonData.Rows);
+                        }
+
+                        $("#tableHeader").html(headerHtml);
+                        $("#reportTableBody").html(rowsHtml);
+                        $("#reportResults").removeClass("hidden");
+                        handleExportButtons(reportName);
+                    },
+                    error: function () {
+                        $("#loading").addClass("hidden");
+                        alert("Failed to fetch the report. Please try again.");
+                    }
+                });
+            });
+
+            // ✅ Function to show export buttons AFTER fetching the report
+            function handleExportButtons(selectedReport) {
+                let visibilityMap = {
+                    "BalanceSheet": ["#exportHierarchicalData"],
+                    "ProfitAndLoss": [],
+                    "ProfitAndLossDetail": ["#exportToDataWarehouse", "#exportWithCategory"],
+                    "CashFlow": [],
+                    "TransactionList": ["#exportToDataWarehouse"],
+                    "CustomerIncome": []
+                };
+
+                // Hide all export buttons first
+                $(".export-btn").addClass("hidden");
+
+                // Show only the relevant buttons
+                if (visibilityMap[selectedReport]) {
+                    visibilityMap[selectedReport].forEach(selector => {
+                        $(selector).removeClass("hidden");
+                    });
+                }
+            }
+
+            // ✅ Fixed CSV Download Function
+            $("#downloadCsv").click(function () {
+                var csv = [];
+                var rows = $("#reportTable tr");
+
+                rows.each(function () {
+                    var rowData = [];
+                    $(this).find("td, th").each(function () {
+                        var cellText = $(this).text().trim();
+
+                        rowData.push('"' + cellText.replace(/"/g, '""') + '"');
+                    });
+                    csv.push(rowData.join(","));
+                });
+
+                if (csv.length === 0) {
+                    alert("No data available for download.");
                     return;
                 }
 
-                reportJsonData = response.data;
-                $("#reportTitle").text(reportJsonData.Header.ReportName);
-                $("#reportPeriod").text(reportJsonData.Header.StartPeriod + " to " + reportJsonData.Header.EndPeriod);
+                var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+                var downloadLink = document.createElement("a");
+                downloadLink.download = reportJsonData.Header.ReportName + ".csv";
+                downloadLink.href = URL.createObjectURL(csvFile);
+                downloadLink.click();
+            });
 
-                var rowsHtml = "";
-                var headerHtml = "";
 
-                if (reportJsonData.Columns && reportJsonData.Columns.Column) {
-                    reportJsonData.Columns.Column.forEach(function (col) {
-                        headerHtml += `<th class="border border-gray-300 dark:border-gray-700 p-2">${col.ColTitle}</th>`;
-                    });
+
+
+
+
+            $("#exportHierarchicalData").click(function () {
+                if (!reportJsonData || !reportJsonData.Rows) {
+                    alert("No valid report data available.");
+                    return;
                 }
 
-                function processRows(rows) {
+                var csv = [];
+                var reportYear = reportJsonData.Header.StartPeriod.substring(0, 4); // Extract year
+
+                function processRows(rows, hierarchy) {
                     if (!rows || !rows.Row) return;
 
                     rows.Row.forEach(function (section) {
-                        if (section.Header && section.Header.ColData) {
-                            rowsHtml += `<tr><td colspan="${section.Header.ColData.length}" class="border border-gray-300 dark:border-gray-700 p-2"><strong>${section.Header.ColData[0]?.value || ''}</strong></td></tr>`;
+                        let currentHierarchy = [...hierarchy];
+
+                        // ✅ Handle headers (categories and subcategories)
+                        if (section.Header && section.Header.ColData && section.Header.ColData[0].value) {
+                            currentHierarchy.push(section.Header.ColData[0].value);
                         }
 
+                        // ✅ Process nested rows (subcategories)
                         if (section.Rows) {
-                            processRows(section.Rows);
+                            processRows(section.Rows, currentHierarchy);
                         }
 
+                        // ✅ Process actual account data
                         if (section.ColData) {
-                            var rowData = section.ColData.map(function (col) {
-                                return col.value || "";
-                            });
-                            rowsHtml += `<tr>${rowData.map(function (data) {
-                                return `<td class="border border-gray-300 dark:border-gray-700 p-2">${data}</td>`;
-                            }).join("")}</tr>`;
-                        }
+                            var rowData = ['"PNE Pizza LLC"', '"' + reportYear + '"'];
 
-                        if (section.Summary && section.Summary.ColData) {
-                            var summaryData = section.Summary.ColData.map(function (col) {
-                                return col.value || "";
-                            });
-                            rowsHtml += `<tr class="bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-200">${summaryData.map(function (data) {
-                                return `<td class="border border-gray-300 dark:border-gray-700 p-2"><strong>${data}</strong></td>`;
-                            }).join("")}</tr>`;
+                            // Ensure exactly 4 hierarchy levels
+                            while (currentHierarchy.length < 4) {
+                                currentHierarchy.push(""); // Fill empty levels
+                            }
+
+                            // ✅ Fix: Ensure Account Name is always in the correct column
+                            var accountName = section.ColData[0].value.replace(/"/g, '""');
+                            var value = section.ColData[1].value.replace(/"/g, '""');
+
+                            rowData.push(...currentHierarchy.map(col => `"${col}"`));
+                            rowData.push(`"${accountName}"`, `"${value}"`);
+
+                            csv.push(rowData.join(","));
                         }
                     });
                 }
 
-                if (reportJsonData.Rows) {
-                    processRows(reportJsonData.Rows);
+                // ✅ Start processing the JSON hierarchy
+                processRows(reportJsonData.Rows, []);
+
+                if (csv.length === 0) {
+                    alert("No valid data available for export.");
+                    return;
                 }
 
-                $("#tableHeader").html(headerHtml);
-                $("#reportTableBody").html(rowsHtml);
-                $("#reportResults").removeClass("hidden");
-                handleExportButtons(reportName);
-            },
-            error: function () {
-                $("#loading").addClass("hidden");
-                alert("Failed to fetch the report. Please try again.");
-            }
-        });
-    });
+                // ✅ Create CSV headers
+                var headers = ['Company Name', 'Year', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Account Name', 'Value'];
+                csv.unshift(headers.join(",")); // Add headers to CSV
 
-    // ✅ Function to show export buttons AFTER fetching the report
-function handleExportButtons(selectedReport) {
-    let visibilityMap = {
-        "BalanceSheet": ["#exportHierarchicalData"],
-        "ProfitAndLoss": [],
-        "ProfitAndLossDetail": ["#exportToDataWarehouse", "#exportWithCategory"],
-        "CashFlow": [],
-        "TransactionList": ["#exportToDataWarehouse"],
-        "CustomerIncome": []
-    };
-
-    // Hide all export buttons first
-    $(".export-btn").addClass("hidden");
-
-    // Show only the relevant buttons
-    if (visibilityMap[selectedReport]) {
-        visibilityMap[selectedReport].forEach(selector => {
-            $(selector).removeClass("hidden");
-        });
-    }
-}
-
-    // ✅ Fixed CSV Download Function
-    $("#downloadCsv").click(function () {
-        var csv = [];
-        var rows = $("#reportTable tr");
-
-        rows.each(function () {
-            var rowData = [];
-            $(this).find("td, th").each(function () {
-                var cellText = $(this).text().trim();
-
-                rowData.push('"' + cellText.replace(/"/g, '""') + '"');
-            });
-            csv.push(rowData.join(","));
-        });
-
-        if (csv.length === 0) {
-            alert("No data available for download.");
-            return;
-        }
-
-        var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
-        var downloadLink = document.createElement("a");
-        downloadLink.download = reportJsonData.Header.ReportName + ".csv";
-        downloadLink.href = URL.createObjectURL(csvFile);
-        downloadLink.click();
-    });
-
-
-
-
-
-
-$("#exportHierarchicalData").click(function () {
-if (!reportJsonData || !reportJsonData.Rows) {
-    alert("No valid report data available.");
-    return;
-}
-
-var csv = [];
-var reportYear = reportJsonData.Header.StartPeriod.substring(0, 4); // Extract year
-
-function processRows(rows, hierarchy) {
-    if (!rows || !rows.Row) return;
-
-    rows.Row.forEach(function (section) {
-        let currentHierarchy = [...hierarchy];
-
-        // ✅ Handle headers (categories and subcategories)
-        if (section.Header && section.Header.ColData && section.Header.ColData[0].value) {
-            currentHierarchy.push(section.Header.ColData[0].value);
-        }
-
-        // ✅ Process nested rows (subcategories)
-        if (section.Rows) {
-            processRows(section.Rows, currentHierarchy);
-        }
-
-        // ✅ Process actual account data
-        if (section.ColData) {
-            var rowData = ['"PNE Pizza LLC"', '"' + reportYear + '"'];
-
-            // Ensure exactly 4 hierarchy levels
-            while (currentHierarchy.length < 4) {
-                currentHierarchy.push(""); // Fill empty levels
-            }
-
-            // ✅ Fix: Ensure Account Name is always in the correct column
-            var accountName = section.ColData[0].value.replace(/"/g, '""');
-            var value = section.ColData[1].value.replace(/"/g, '""');
-
-            rowData.push(...currentHierarchy.map(col => `"${col}"`));
-            rowData.push(`"${accountName}"`, `"${value}"`);
-
-            csv.push(rowData.join(","));
-        }
-    });
-}
-
-// ✅ Start processing the JSON hierarchy
-processRows(reportJsonData.Rows, []);
-
-if (csv.length === 0) {
-    alert("No valid data available for export.");
-    return;
-}
-
-// ✅ Create CSV headers
-var headers = ['Company Name', 'Year', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Account Name', 'Value'];
-csv.unshift(headers.join(",")); // Add headers to CSV
-
-// ✅ Create & download CSV file
-var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
-var downloadLink = document.createElement("a");
-downloadLink.download = "Balance_Sheet_Export.csv";
-downloadLink.href = URL.createObjectURL(csvFile);
-downloadLink.click();
-});
-
-
-
-
-
-    $("#exportToDataWarehouse").click(function () {
-        var csv = [];
-        var rows = $("#reportTable tr");
-
-        rows.each(function () {
-            var rowData = [];
-            var firstCell = $(this).find("td, th").first().text().trim();
-
-
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
-                return;
-            }
-
-            $(this).find("td, th").each(function () {
-                var cellText = $(this).text().trim();
-
-                rowData.push('"' + cellText.replace(/"/g, '""') + '"');
+                // ✅ Create & download CSV file
+                var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+                var downloadLink = document.createElement("a");
+                downloadLink.download = "Balance_Sheet_Export.csv";
+                downloadLink.href = URL.createObjectURL(csvFile);
+                downloadLink.click();
             });
 
-            csv.push(rowData.join(","));
-        });
-
-        if (csv.length === 0) {
-            alert("No valid data available for export.");
-            return;
-        }
-
-        var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
-        var downloadLink = document.createElement("a");
-        downloadLink.download = "DataWarehouse_Export.csv";
-        downloadLink.href = URL.createObjectURL(csvFile);
-        downloadLink.click();
-    });
 
 
 
-    $("#exportWithCategory").click(function () {
-        var csv = [];
-        var rows = $("#reportTable tr");
-        var currentCategory = "";
 
-        rows.each(function () {
-            var rowData = [];
-            var firstCell = $(this).find("td, th").first().text().trim();
+            $("#exportToDataWarehouse").click(function () {
+                var csv = [];
+                var rows = $("#reportTable tr");
 
-
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell) && firstCell.length > 0) {
-
-                currentCategory = firstCell.replace(/^\d+\s*/, "").trim();
-                return;
-            }
+                rows.each(function () {
+                    var rowData = [];
+                    var firstCell = $(this).find("td, th").first().text().trim();
 
 
-            if (/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
-                $(this).find("td, th").each(function () {
-                    var cellText = $(this).text().trim();
-                    rowData.push('"' + cellText.replace(/"/g, '""') + '"');
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
+                        return;
+                    }
+
+                    $(this).find("td, th").each(function () {
+                        var cellText = $(this).text().trim();
+
+                        rowData.push('"' + cellText.replace(/"/g, '""') + '"');
+                    });
+
+                    csv.push(rowData.join(","));
                 });
 
-                rowData.push('"' + currentCategory.replace(/"/g, '""') + '"');
-                csv.push(rowData.join(","));
-            }
+                if (csv.length === 0) {
+                    alert("No valid data available for export.");
+                    return;
+                }
+
+                var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+                var downloadLink = document.createElement("a");
+                downloadLink.download = "DataWarehouse_Export.csv";
+                downloadLink.href = URL.createObjectURL(csvFile);
+                downloadLink.click();
+            });
+
+
+
+            $("#exportWithCategory").click(function () {
+                var csv = [];
+                var rows = $("#reportTable tr");
+                var currentCategory = "";
+
+                rows.each(function () {
+                    var rowData = [];
+                    var firstCell = $(this).find("td, th").first().text().trim();
+
+
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstCell) && firstCell.length > 0) {
+
+                        currentCategory = firstCell.replace(/^\d+\s*/, "").trim();
+                        return;
+                    }
+
+
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(firstCell)) {
+                        $(this).find("td, th").each(function () {
+                            var cellText = $(this).text().trim();
+                            rowData.push('"' + cellText.replace(/"/g, '""') + '"');
+                        });
+
+                        rowData.push('"' + currentCategory.replace(/"/g, '""') + '"');
+                        csv.push(rowData.join(","));
+                    }
+                });
+
+                if (csv.length === 0) {
+                    alert("No valid data available for export.");
+                    return;
+                }
+
+                var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
+                var downloadLink = document.createElement("a");
+                downloadLink.download = "Data_With_Category.csv";
+                downloadLink.href = URL.createObjectURL(csvFile);
+                downloadLink.click();
+            });
         });
-
-        if (csv.length === 0) {
-            alert("No valid data available for export.");
-            return;
-        }
-
-        var csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
-        var downloadLink = document.createElement("a");
-        downloadLink.download = "Data_With_Category.csv";
-        downloadLink.href = URL.createObjectURL(csvFile);
-        downloadLink.click();
-    });
-});
 
 
 
