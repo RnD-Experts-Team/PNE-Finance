@@ -167,8 +167,8 @@ class QuickBooksReportController extends Controller
     public function fetchBalanceSheetFlattened(Request $request)
     {
 
-        $startDate = $request->query('start_date', '2025-01-01');
-        $endDate   = $request->query('end_date', '2025-12-31');
+        $startDate = $request->query('start_date');
+        $endDate   = $request->query('end_date');
 
 
         $token = QuickBooksToken::first();
@@ -196,7 +196,7 @@ class QuickBooksReportController extends Controller
     ])->get($url, [
         'start_date'            => $startDate,
         'end_date'              => $endDate,
-        'summarize_column_by' => 'Total',
+      //  'summarize_column_by' => 'Total',
     ]);
 
     if ($response->failed()) {
