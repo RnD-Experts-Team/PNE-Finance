@@ -327,11 +327,10 @@ private function flattenRows(array $rows, array $hierarchy, string $companyName,
 
 public function fetchProfitAndLossDetail(Request $request)
 {
-    // 1) Retrieve / Validate date range from query or some default
+
     $startDate = $request->query('start_date');
     $endDate   = $request->query('end_date');
 
-    // 2) QuickBooks token, realm ID, etc.
     $token = QuickBooksToken::first();
     if (!$token) {
         return response()->json(['error' => 'QuickBooks is not connected.'], 401);
@@ -340,7 +339,7 @@ public function fetchProfitAndLossDetail(Request $request)
     $accessToken = $token->access_token;
 
 
-     // Check if token is expired and refresh if needed
+
      if (Carbon::now()->greaterThan($token->expires_at)) {
         if (!$this->refreshToken()) {
             return response()->json(['error' => 'Failed to refresh token'], 401);
@@ -349,7 +348,7 @@ public function fetchProfitAndLossDetail(Request $request)
         $accessToken = $token->access_token;
     }
 
-    // 3) Call QuickBooks "ProfitAndLossDetail" (or "ProfitAndLoss" with detail)
+
     $url = $this->getBaseUrl()."/v3/company/{$realmId}/reports/ProfitAndLossDetail";
 
     $response = Http::withHeaders([
@@ -398,10 +397,9 @@ public function fetchProfitAndLossDetail(Request $request)
     return response()->stream(function () use ($headerTitles, $flattened) {
         $file = fopen('php://output', 'w');
 
-        // First row: column headers from QBO
         fputcsv($file, $headerTitles);
 
-        // Then each flattened row
+
         foreach ($flattened as $row) {
             fputcsv($file, $row);
         }
@@ -422,19 +420,19 @@ public function fetchProfitAndLossDetail(Request $request)
 private function flattenAllRows(array $rows, array &$flattened, int $columnCount)
 {
     foreach ($rows as $section) {
-        // 1) Output the "Header" row if present
+
         if (isset($section['Header']['ColData'])) {
             $headerRow = $this->colDataToCsvRow($section['Header']['ColData'], $columnCount);
             $flattened[] = $headerRow;
         }
 
-        // 2) Output the "ColData" row if present
+
         if (isset($section['ColData'])) {
             $dataRow = $this->colDataToCsvRow($section['ColData'], $columnCount);
             $flattened[] = $dataRow;
         }
 
-        // 3) Output the "Summary" row if present
+
         if (isset($section['Summary']['ColData'])) {
             $summaryRow = $this->colDataToCsvRow($section['Summary']['ColData'], $columnCount);
             $flattened[] = $summaryRow;
