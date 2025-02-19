@@ -4,10 +4,20 @@ use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\QuickBooksReportController;
 use App\Http\Controllers\QuickBooksController;
+use App\Http\Middleware\CheckSecretHeader;
+
 
 Route::get('/', function () {
     return view('welcome');
 });
+
+Route::get('/balance-sheet-flattened', [QuickBooksReportController::class, 'fetchBalanceSheetFlattened'])
+  ->middleware(CheckSecretHeader::class)
+ ->name('balance.sheet.flattened');
+
+ Route::get('/profit-loss-detail-csv', [QuickBooksReportController::class, 'fetchProfitAndLossDetail'])
+ ->middleware(CheckSecretHeader::class)
+     ->name('qbo.pldetail.csv');
 
 Route::get('/eula', function () {
     return view('legal.eula');
@@ -48,5 +58,8 @@ Route::middleware('auth')->group(function () {
 
 
 });
+
+Route::get('/qbo/reports/{reportName}', [QuickBooksReportController::class, 'fetchReport'])->name('qbo.report');
+
 
 require __DIR__.'/auth.php';
