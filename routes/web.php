@@ -19,6 +19,10 @@ Route::get('/balance-sheet-flattened', [QuickBooksReportController::class, 'fetc
  ->middleware(CheckSecretHeader::class)
      ->name('qbo.pldetail.csv');
 
+     Route::get('/profit-loss-detail-csva', [QuickBooksReportController::class, 'fetchProfitAndLossDetailall'])
+     ->middleware(CheckSecretHeader::class)
+         ->name('qbo.pldetaila.csv');
+
 Route::get('/eula', function () {
     return view('legal.eula');
 })->name('eula');

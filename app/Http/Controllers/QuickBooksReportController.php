@@ -16,14 +16,14 @@ class QuickBooksReportController extends Controller
         return env('QBO_SANDBOX') ? "https://sandbox-quickbooks.api.intuit.com" : "https://quickbooks.api.intuit.com";
     }
 
-    // Show the report selection page
+
     public function showReportsPage()
     {
         $isConnected = QuickBooksToken::exists();
         return view('reports.select_report', compact('isConnected'));
     }
 
-    // Fetch QuickBooks report and return JSON (Auto-refresh token)
+
     public function fetchReport(Request $request, $reportName)
     {
 
@@ -36,11 +36,10 @@ class QuickBooksReportController extends Controller
             return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
         }
 
-        // Decrypt stored credentials
         $realmId = Crypt::decryptString($token->realm_id);
         $accessToken = $token->access_token;
 
-        // Check if token is expired and refresh if needed
+
         if (Carbon::now()->greaterThan($token->expires_at)) {
             if (!$this->refreshToken()) {
                 return response()->json(['error' => 'Failed to refresh token'], 401);
@@ -76,7 +75,7 @@ class QuickBooksReportController extends Controller
         ]);
     }
 
-    // Fetch the report live for the Blade page
+
     public function fetchReportLive(Request $request)
     {
         $reportName = $request->input('report_name');
@@ -88,11 +87,11 @@ class QuickBooksReportController extends Controller
             return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
         }
 
-        // Decrypt stored credentials
+
         $realmId = Crypt::decryptString($token->realm_id);
         $accessToken = $token->access_token;
 
-        // Check if token is expired and refresh if needed
+
         if (Carbon::now()->greaterThan($token->expires_at)) {
             if (!$this->refreshToken()) {
                 return response()->json(['error' => 'Failed to refresh token'], 401);
@@ -129,7 +128,6 @@ class QuickBooksReportController extends Controller
         ]);
     }
 
-    // Refresh QuickBooks Access Token with encryption
     private function refreshToken()
     {
         $token = QuickBooksToken::first();
@@ -176,11 +174,11 @@ class QuickBooksReportController extends Controller
             return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
         }
 
-    // Decrypt stored credentials
+
     $realmId = Crypt::decryptString($token->realm_id);
     $accessToken = $token->access_token;
 
-    // Check if token is expired and refresh if needed
+
     if (Carbon::now()->greaterThan($token->expires_at)) {
         if (!$this->refreshToken()) {
             return response()->json(['error' => 'Failed to refresh token'], 401);
@@ -208,33 +206,32 @@ class QuickBooksReportController extends Controller
 
     $reportJsonData = $response->json();
 
-    // 2) Extract the year from the StartPeriod, e.g. "2025-01-01" => "2025"
+
     $startPeriod = $reportJsonData['Header']['StartPeriod'] ?? $startDate;
     $year = substr($startPeriod, 0, 4);
 
-    // 3) Flatten the rows
+
     $rows = [];
     if (isset($reportJsonData['Rows'])) {
         $rows = $this->flattenRows(
             $reportJsonData['Rows'],
-            [],                  // start with empty hierarchy
-            'PNE Pizza LLC',     // or fetch a real company name
+            [],
+            'PNE Pizza LLC',
             $year
         );
     }
 
-    // 4) Build the CSV in memory
     $filename = "Balance_Sheet_Export.csv";
     $headers  = [
         'Content-Type'        => 'text/csv',
         'Content-Disposition' => "attachment; filename=\"$filename\"",
     ];
 
-    // We'll stream the CSV, but you can also build a string if you prefer
+
     return response()->stream(function () use ($rows) {
         $file = fopen('php://output', 'w');
 
-        // Write CSV headers same as your JS code
+
         fputcsv($file, [
             'Company Name',
             'Year',
@@ -246,7 +243,7 @@ class QuickBooksReportController extends Controller
             'Value'
         ]);
 
-        // Write each row
+
         foreach ($rows as $row) {
             fputcsv($file, $row);
         }
@@ -459,5 +456,138 @@ private function colDataToCsvRow(array $colData, int $columnCount): array
     }
     return $row;
 }
+
+
+
+public function fetchProfitAndLossDetailall(Request $request)
+{
+    // 1) Verify or refresh your QuickBooks token
+    $token = QuickBooksToken::first();
+    if (!$token) {
+        return response()->json(['error' => 'QuickBooks is not connected.'], 401);
+    }
+    $realmId = Crypt::decryptString($token->realm_id);
+    $accessToken = $token->access_token;
+
+    if (Carbon::now()->greaterThan($token->expires_at)) {
+        if (!$this->refreshToken()) {
+            return response()->json(['error' => 'Failed to refresh token'], 401);
+        }
+        $token = QuickBooksToken::first();
+        $accessToken = $token->access_token;
+    }
+
+    $urlBase = $this->getBaseUrl()."/v3/company/{$realmId}/reports/ProfitAndLossDetail";
+
+    // 2) Define your date ranges.
+    //    If you specifically want (Jan 1 - Jun 30, Jun 30 - Dec 31) for each year from 2023 - 2026,
+    //    here they are explicitly. You can, of course, generate them programmatically.
+    $chunks = [
+        ['start_date' => '2023-01-01', 'end_date' => '2023-06-30'],
+        ['start_date' => '2023-06-30', 'end_date' => '2023-12-31'],
+
+        ['start_date' => '2024-01-01', 'end_date' => '2024-06-30'],
+        ['start_date' => '2024-06-30', 'end_date' => '2024-12-31'],
+
+        ['start_date' => '2025-01-01', 'end_date' => '2025-06-30'],
+        ['start_date' => '2025-06-30', 'end_date' => '2025-12-31'],
+
+        ['start_date' => '2026-01-01', 'end_date' => '2026-06-30'],
+        ['start_date' => '2026-06-30', 'end_date' => '2026-12-31'],
+    ];
+
+    // 3) We’ll accumulate all "flattened" rows from each chunk in here:
+    $allFlattenedRows = [];
+
+    // 4) Columns / header row – we’ll pick them up from the first successful response
+    $headerTitles = [];
+    $columnCount  = 0;
+
+    // 5) Loop over each chunk, make the same request, flatten rows, accumulate
+    foreach ($chunks as $chunk) {
+
+        // Make the request for this 6-month window
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Accept'        => 'application/json'
+        ])->get($urlBase, [
+            'start_date' => $chunk['start_date'],
+            'end_date'   => $chunk['end_date'],
+            // optional parameters:
+            // 'accounting_method' => 'Accrual' or 'Cash',
+            // 'summarize_column_by' => 'Total'
+        ]);
+
+        if ($response->failed()) {
+            // We can either fail early or continue to the next chunk;
+            // here we'll fail early and return an error
+            return response()->json([
+                'error'   => 'Failed to fetch P&L Detail',
+                'details' => $response->json(),
+            ], 400);
+        }
+
+        $reportJsonData = $response->json();
+
+        // On the very first successful chunk, extract the columns/titles
+        if (!$headerTitles) {
+            $columns = $reportJsonData['Columns']['Column'] ?? [];
+            $columnCount = count($columns);
+            // Build the CSV header row from QuickBooks' column titles
+            // e.g.: ["Date", "Transaction Type", "Num", "Name", "Class", "Memo/Description", "Split", "Amount", "Balance"]
+            $headerTitles = array_map(function ($col) {
+                return $col['ColTitle'] ?? '';
+            }, $columns);
+        }
+
+        // Flatten the rows for this chunk
+        if (isset($reportJsonData['Rows']['Row'])) {
+            // We assume you have a helper method flattenAllRows that
+            // recursively flattens out the 'Row' and pushes them into an array
+            $flattened = [];
+            $this->flattenAllRows($reportJsonData['Rows']['Row'], $flattened, $columnCount);
+
+            // Merge into our main array
+            $allFlattenedRows = array_merge($allFlattenedRows, $flattened);
+        }
+    }
+
+    // 6) Return all rows in a single CSV
+    $filename = "Profit_and_Loss_AllData.csv";
+    $headers  = [
+        'Content-Type'        => 'text/csv',
+        'Content-Disposition' => "attachment; filename=\"$filename\"",
+    ];
+
+    return response()->stream(function () use ($headerTitles, $allFlattenedRows) {
+        $file = fopen('php://output', 'w');
+
+        // CSV header
+        fputcsv($file, $headerTitles);
+
+        // CSV data
+        foreach ($allFlattenedRows as $row) {
+            fputcsv($file, $row);
+        }
+
+        fclose($file);
+    }, 200, $headers);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }

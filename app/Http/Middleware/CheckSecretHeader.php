@@ -7,12 +7,10 @@ use Illuminate\Http\Request;
 
 class CheckSecretHeader
 {
-    /**
-     * Handle an incoming request.
-     */
+
     public function handle(Request $request, Closure $next)
     {
-        // We expect a header named 'X-Secret-Key'
+
         $providedKey = $request->header('X-Secret-Key');
 
         // The expected key is read from config (points to .env)
