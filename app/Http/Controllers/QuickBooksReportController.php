@@ -483,16 +483,16 @@ public function fetchProfitAndLossDetailall(Request $request)
     //    If you specifically want (Jan 1 - Jun 30, Jun 30 - Dec 31) for each year from 2023 - 2026,
     //    here they are explicitly. You can, of course, generate them programmatically.
     $chunks = [
-        ['start_date' => '2023-01-01', 'end_date' => '2023-06-30'],
+        ['start_date' => '2023-01-01', 'end_date' => '2023-06-29'],
         ['start_date' => '2023-06-30', 'end_date' => '2023-12-31'],
 
-        ['start_date' => '2024-01-01', 'end_date' => '2024-06-30'],
+        ['start_date' => '2024-01-01', 'end_date' => '2024-06-29'],
         ['start_date' => '2024-06-30', 'end_date' => '2024-12-31'],
 
-        ['start_date' => '2025-01-01', 'end_date' => '2025-06-30'],
+        ['start_date' => '2025-01-01', 'end_date' => '2025-06-29'],
         ['start_date' => '2025-06-30', 'end_date' => '2025-12-31'],
 
-        ['start_date' => '2026-01-01', 'end_date' => '2026-06-30'],
+        ['start_date' => '2026-01-01', 'end_date' => '2026-06-29'],
         ['start_date' => '2026-06-30', 'end_date' => '2026-12-31'],
     ];
 
