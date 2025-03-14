@@ -486,14 +486,17 @@ public function fetchProfitAndLossDetailall(Request $request)
         ['start_date' => '2023-01-01', 'end_date' => '2023-06-29'],
         ['start_date' => '2023-06-30', 'end_date' => '2023-12-31'],
 
-        ['start_date' => '2024-01-01', 'end_date' => '2024-06-29'],
-        ['start_date' => '2024-06-30', 'end_date' => '2024-12-31'],
+        ['start_date' => '2024-01-01', 'end_date' => '2024-04-29'],
+        ['start_date' => '2024-04-30', 'end_date' => '2024-08-31'],
+        ['start_date' => '2024-09-01', 'end_date' => '2024-12-31'],
 
-        ['start_date' => '2025-01-01', 'end_date' => '2025-06-29'],
-        ['start_date' => '2025-06-30', 'end_date' => '2025-12-31'],
+        ['start_date' => '2025-01-01', 'end_date' => '2025-04-29'],
+        ['start_date' => '2025-04-30', 'end_date' => '2025-08-31'],
+        ['start_date' => '2025-09-01', 'end_date' => '2025-12-31'],
 
-        ['start_date' => '2026-01-01', 'end_date' => '2026-06-29'],
-        ['start_date' => '2026-06-30', 'end_date' => '2026-12-31'],
+        ['start_date' => '2026-01-01', 'end_date' => '2026-04-29'],
+        ['start_date' => '2026-04-30', 'end_date' => '2026-08-31'],
+        ['start_date' => '2026-09-01', 'end_date' => '2026-12-31'],
     ];
 
     // 3) We’ll accumulate all "flattened" rows from each chunk in here:
