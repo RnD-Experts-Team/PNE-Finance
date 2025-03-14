@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Crypt;
 use Carbon\Carbon;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Support\Facades\Log;
 
 class QuickBooksReportController extends Controller
 {
@@ -461,69 +462,71 @@ private function colDataToCsvRow(array $colData, int $columnCount): array
 
 public function fetchProfitAndLossDetailall(Request $request)
 {
+    Log::info("Starting fetchProfitAndLossDetailall function.");
+
     // 1) Verify or refresh your QuickBooks token
     $token = QuickBooksToken::first();
     if (!$token) {
+        Log::error("QuickBooks token not found. Connection issue.");
         return response()->json(['error' => 'QuickBooks is not connected.'], 401);
     }
+    Log::info("QuickBooks token found.");
+
     $realmId = Crypt::decryptString($token->realm_id);
     $accessToken = $token->access_token;
 
     if (Carbon::now()->greaterThan($token->expires_at)) {
+        Log::warning("QuickBooks token expired. Attempting to refresh...");
         if (!$this->refreshToken()) {
+            Log::error("Failed to refresh QuickBooks token.");
             return response()->json(['error' => 'Failed to refresh token'], 401);
         }
         $token = QuickBooksToken::first();
         $accessToken = $token->access_token;
+        Log::info("QuickBooks token refreshed successfully.");
     }
 
     $urlBase = $this->getBaseUrl()."/v3/company/{$realmId}/reports/ProfitAndLossDetail";
+    Log::info("Base URL for QuickBooks API: " . $urlBase);
 
-    // 2) Define your date ranges.
-    //    If you specifically want (Jan 1 - Jun 30, Jun 30 - Dec 31) for each year from 2023 - 2026,
-    //    here they are explicitly. You can, of course, generate them programmatically.
     $chunks = [
         ['start_date' => '2023-01-01', 'end_date' => '2023-06-29'],
         ['start_date' => '2023-06-30', 'end_date' => '2023-12-31'],
-
         ['start_date' => '2024-01-01', 'end_date' => '2024-04-29'],
         ['start_date' => '2024-04-30', 'end_date' => '2024-08-31'],
         ['start_date' => '2024-09-01', 'end_date' => '2024-12-31'],
-
         ['start_date' => '2025-01-01', 'end_date' => '2025-04-29'],
         ['start_date' => '2025-04-30', 'end_date' => '2025-08-31'],
         ['start_date' => '2025-09-01', 'end_date' => '2025-12-31'],
-
         ['start_date' => '2026-01-01', 'end_date' => '2026-04-29'],
         ['start_date' => '2026-04-30', 'end_date' => '2026-08-31'],
         ['start_date' => '2026-09-01', 'end_date' => '2026-12-31'],
     ];
 
-    // 3) We’ll accumulate all "flattened" rows from each chunk in here:
-    $allFlattenedRows = [];
+    Log::info("Processing " . count($chunks) . " chunks.");
 
-    // 4) Columns / header row – we’ll pick them up from the first successful response
+    $allFlattenedRows = [];
     $headerTitles = [];
     $columnCount  = 0;
 
-    // 5) Loop over each chunk, make the same request, flatten rows, accumulate
     foreach ($chunks as $chunk) {
+        Log::info("Fetching data for chunk: " . $chunk['start_date'] . " to " . $chunk['end_date']);
 
-        // Make the request for this 6-month window
+        $startTime = microtime(true);
+
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $accessToken,
             'Accept'        => 'application/json'
         ])->get($urlBase, [
             'start_date' => $chunk['start_date'],
             'end_date'   => $chunk['end_date'],
-            // optional parameters:
-            // 'accounting_method' => 'Accrual' or 'Cash',
-            // 'summarize_column_by' => 'Total'
         ]);
 
         if ($response->failed()) {
-            // We can either fail early or continue to the next chunk;
-            // here we'll fail early and return an error
+            Log::error("Failed to fetch P&L Detail for " . $chunk['start_date'] . " - " . $chunk['end_date'], [
+                'status' => $response->status(),
+                'error'  => $response->json(),
+            ]);
             return response()->json([
                 'error'   => 'Failed to fetch P&L Detail',
                 'details' => $response->json(),
@@ -531,44 +534,49 @@ public function fetchProfitAndLossDetailall(Request $request)
         }
 
         $reportJsonData = $response->json();
+        Log::info("Successfully fetched data for chunk: " . $chunk['start_date'] . " to " . $chunk['end_date']);
 
-        // On the very first successful chunk, extract the columns/titles
         if (!$headerTitles) {
             $columns = $reportJsonData['Columns']['Column'] ?? [];
             $columnCount = count($columns);
-            // Build the CSV header row from QuickBooks' column titles
-            // e.g.: ["Date", "Transaction Type", "Num", "Name", "Class", "Memo/Description", "Split", "Amount", "Balance"]
             $headerTitles = array_map(function ($col) {
                 return $col['ColTitle'] ?? '';
             }, $columns);
+            Log::info("Extracted column headers: " . implode(', ', $headerTitles));
         }
 
-        // Flatten the rows for this chunk
         if (isset($reportJsonData['Rows']['Row'])) {
-            // We assume you have a helper method flattenAllRows that
-            // recursively flattens out the 'Row' and pushes them into an array
             $flattened = [];
             $this->flattenAllRows($reportJsonData['Rows']['Row'], $flattened, $columnCount);
-
-            // Merge into our main array
             $allFlattenedRows = array_merge($allFlattenedRows, $flattened);
+
+            Log::info("Processed " . count($flattened) . " rows for chunk: " . $chunk['start_date'] . " to " . $chunk['end_date']);
+        } else {
+            Log::warning("No data found for chunk: " . $chunk['start_date'] . " to " . $chunk['end_date']);
         }
+
+        $endTime = microtime(true);
+        $executionTime = round($endTime - $startTime, 2);
+        Log::info("Chunk " . $chunk['start_date'] . " - " . $chunk['end_date'] . " took {$executionTime} seconds to process.");
+
+        sleep(2);
     }
 
-    // 6) Return all rows in a single CSV
+    Log::info("Total flattened rows collected: " . count($allFlattenedRows));
+
     $filename = "Profit_and_Loss_AllData.csv";
     $headers  = [
         'Content-Type'        => 'text/csv',
         'Content-Disposition' => "attachment; filename=\"$filename\"",
     ];
 
+    Log::info("Generating CSV file with " . count($allFlattenedRows) . " rows.");
+
     return response()->stream(function () use ($headerTitles, $allFlattenedRows) {
         $file = fopen('php://output', 'w');
 
-        // CSV header
         fputcsv($file, $headerTitles);
 
-        // CSV data
         foreach ($allFlattenedRows as $row) {
             fputcsv($file, $row);
         }
@@ -576,6 +584,7 @@ public function fetchProfitAndLossDetailall(Request $request)
         fclose($file);
     }, 200, $headers);
 }
+
 
 
 
