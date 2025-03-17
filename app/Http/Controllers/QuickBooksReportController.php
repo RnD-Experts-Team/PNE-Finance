@@ -536,6 +536,7 @@ public function fetchProfitAndLossDetailall(Request $request)
         $reportJsonData = $response->json();
         Log::info("Successfully fetched data for chunk: " . $chunk['start_date'] . " to " . $chunk['end_date']);
 
+        // Grab column headers if we haven't yet
         if (!$headerTitles) {
             $columns = $reportJsonData['Columns']['Column'] ?? [];
             $columnCount = count($columns);
@@ -545,9 +546,18 @@ public function fetchProfitAndLossDetailall(Request $request)
             Log::info("Extracted column headers: " . implode(', ', $headerTitles));
         }
 
+        // Flatten rows for this chunk
         if (isset($reportJsonData['Rows']['Row'])) {
             $flattened = [];
             $this->flattenAllRows($reportJsonData['Rows']['Row'], $flattened, $columnCount);
+
+            // Remove newlines in all fields of the flattened rows
+            foreach ($flattened as &$flatRow) {
+                foreach ($flatRow as &$field) {
+                    $field = str_replace(["\r", "\n"], " ", $field);
+                }
+            }
+
             $allFlattenedRows = array_merge($allFlattenedRows, $flattened);
 
             Log::info("Processed " . count($flattened) . " rows for chunk: " . $chunk['start_date'] . " to " . $chunk['end_date']);
@@ -558,8 +568,6 @@ public function fetchProfitAndLossDetailall(Request $request)
         $endTime = microtime(true);
         $executionTime = round($endTime - $startTime, 2);
         Log::info("Chunk " . $chunk['start_date'] . " - " . $chunk['end_date'] . " took {$executionTime} seconds to process.");
-
-        sleep(2);
     }
 
     Log::info("Total flattened rows collected: " . count($allFlattenedRows));
@@ -584,6 +592,7 @@ public function fetchProfitAndLossDetailall(Request $request)
         fclose($file);
     }, 200, $headers);
 }
+
 
 
 
