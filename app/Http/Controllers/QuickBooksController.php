@@ -12,18 +12,21 @@ use Illuminate\Support\Facades\Log;
 
 class QuickBooksController extends Controller
 {
+    private function getDataService()
+    {
+        return DataService::Configure([
+            'auth_mode'     => 'oauth2',
+            'ClientID'      => config('qbo.client_id'),
+            'ClientSecret'  => config('qbo.client_secret'),
+            'RedirectURI'   => config('qbo.redirect_uri'),
+            'scope'         => config('qbo.scope'),
+            'baseUrl'       => config('qbo.base_url'),
+        ]);
+    }
     // Redirect to QuickBooks Authentication
     public function connect()
     {
-        $dataService = DataService::Configure([
-            'auth_mode'       => 'oauth2',
-            'ClientID'        => env('QBO_CLIENT_ID'),
-            'ClientSecret'    => env('QBO_CLIENT_SECRET'),
-            'RedirectURI'     => env('QBO_REDIRECT_URI'),
-            'scope'           => 'com.intuit.quickbooks.accounting',
-            'baseUrl'         => env('QBO_SANDBOX') ? "sandbox" : "production"
-        ]);
-
+        $dataService = $this->getDataService();
         $OAuth2LoginHelper = $dataService->getOAuth2LoginHelper();
         $authUrl = (string) $OAuth2LoginHelper->getAuthorizationCodeURL();
 
@@ -45,13 +48,7 @@ class QuickBooksController extends Controller
             return response()->json(['error' => 'Missing authorization parameters from QuickBooks'], 400);
         }
         
-        $dataService = DataService::Configure([
-            'auth_mode'       => 'oauth2',
-            'ClientID'        => env('QBO_CLIENT_ID'),
-            'ClientSecret'    => env('QBO_CLIENT_SECRET'),
-            'RedirectURI'     => env('QBO_REDIRECT_URI'),
-            'baseUrl'         => env('QBO_SANDBOX') ? "sandbox" : "production"
-        ]);
+        $dataService = $this->getDataService();
 
         $OAuth2LoginHelper = $dataService->getOAuth2LoginHelper();
 

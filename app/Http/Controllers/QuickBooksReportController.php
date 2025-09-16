@@ -14,7 +14,7 @@ class QuickBooksReportController extends Controller
 {
     private function getBaseUrl()
     {
-        return env('QBO_SANDBOX') ? "https://sandbox-quickbooks.api.intuit.com" : "https://quickbooks.api.intuit.com";
+        return config('qbo.sandbox') ? "https://sandbox-quickbooks.api.intuit.com" : "https://quickbooks.api.intuit.com";
     }
 
 
@@ -31,7 +31,6 @@ class QuickBooksReportController extends Controller
         $startDate = $request->query('start_date', '2025-01-01');
         $endDate   = $request->query('end_date', '2025-12-31');
 
-
         $token = QuickBooksToken::first();
         if (!$token) {
             return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
@@ -39,7 +38,6 @@ class QuickBooksReportController extends Controller
 
         $realmId = Crypt::decryptString($token->realm_id);
         $accessToken = $token->access_token;
-
 
         if (Carbon::now()->greaterThan($token->expires_at)) {
             if (!$this->refreshToken()) {
@@ -88,10 +86,8 @@ class QuickBooksReportController extends Controller
             return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
         }
 
-
         $realmId = Crypt::decryptString($token->realm_id);
         $accessToken = $token->access_token;
-
 
         if (Carbon::now()->greaterThan($token->expires_at)) {
             if (!$this->refreshToken()) {
@@ -141,8 +137,8 @@ class QuickBooksReportController extends Controller
         $response = Http::asForm()->post('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', [
             'grant_type' => 'refresh_token',
             'refresh_token' => $decryptedRefreshToken,
-            'client_id' => env('QBO_CLIENT_ID'),
-            'client_secret' => env('QBO_CLIENT_SECRET'),
+            'client_id' => config('qbo.client_id'),
+            'client_secret' => config('qbo.client_secret'),
         ]);
 
         if ($response->failed()) {

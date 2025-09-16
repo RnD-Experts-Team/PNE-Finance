@@ -63,6 +63,7 @@
                                 <option value="ProfitAndLossDetail">Profit & Loss Details</option>
                                 <option value="CashFlow">Cash Flow</option>
                                 <option value="TransactionList">Transaction List</option>
+                                <option value="JournalReport">Journal (General Journal)</option>
                                 <option value="CustomerIncome">Customer Income</option>
                             </select>
                         </div>
@@ -120,6 +121,21 @@
                             class="mt-2 px-4 py-2 bg-purple-600 dark:bg-purple-500 text-white font-semibold rounded-md shadow-sm hover:bg-purple-700 dark:hover:bg-purple-400 export-btn">
                             Export Balance Sheet
                         </button>
+
+                        <button id="exportJournalClean"
+  class="mt-2 ml-2 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white font-semibold rounded-md shadow-sm hover:bg-blue-700 dark:hover:bg-blue-400 export-btn hidden">
+  Export Journal (clean)
+</button>
+
+<button id="exportJournalWithGroup"
+  class="mt-2 ml-2 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white font-semibold rounded-md shadow-sm hover:bg-indigo-700 dark:hover:bg-indigo-400 export-btn hidden">
+  Export Journal (with Group ID)
+</button>
+
+<button id="exportJournalByAccount"
+  class="mt-2 ml-2 px-4 py-2 bg-purple-600 dark:bg-purple-500 text-white font-semibold rounded-md shadow-sm hover:bg-purple-700 dark:hover:bg-purple-400 export-btn hidden">
+  Export by Account (summary)
+</button>
 
 
                         <div class="overflow-x-auto mt-4">
@@ -256,7 +272,8 @@
                     "ProfitAndLossDetail": ["#exportToDataWarehouse", "#exportWithCategory"],
                     "CashFlow": [],
                     "TransactionList": ["#exportToDataWarehouse"],
-                    "CustomerIncome": []
+                    "CustomerIncome": [],
+                    "JournalReport": ["#exportJournalClean", "#exportJournalWithGroup", "#exportJournalByAccount"]
                 };
 
                 // Hide all export buttons first
@@ -446,6 +463,132 @@
                 downloadLink.download = "Data_With_Category.csv";
                 downloadLink.href = URL.createObjectURL(csvFile);
                 downloadLink.click();
+            });
+
+
+            // Helpers specific to JournalReport exports
+            function csvDownload(filename, rows) {
+                if (!rows || !rows.length) { alert("No data available for export."); return; }
+                const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+                const a = document.createElement("a");
+                a.download = filename;
+                a.href = URL.createObjectURL(blob);
+                a.click();
+            }
+
+            // Normalize JournalReport JSON to flat journal lines with filled-down values
+            function normalizeJournal(reportJson) {
+                if (!reportJson || !reportJson.Rows || !Array.isArray(reportJson.Rows.Row)) return [];
+
+                const out = [];
+                let carry = { date:"", type:"", num:"", name:"" };
+                let groupId = 0;
+
+                for (const r of reportJson.Rows.Row) {
+                    if (r.type === "Section") {
+                        continue; // ignore section summaries in export
+                    }
+                    if (!r.ColData) continue;
+
+                    const cols = r.ColData;
+                    const val = (i) => (cols[i] && (cols[i].value ?? "")) || "";
+                    const nonEmpty = (s) => (s || "").trim() !== "";
+                    const hasAny = (arr) => arr.some(nonEmpty);
+
+                    let date = val(0);
+                    let type = val(1);
+                    let num  = val(2);
+                    let name = val(3);
+                    let memo = val(4);
+                    let acct = val(5);
+                    let debit = val(6);
+                    let credit = val(7);
+
+                    if (!hasAny([date,type,num,name,memo,acct,debit,credit])) continue;
+
+                    const isContinuation = (date === "" || date === "0-00-00");
+
+                    if (!isContinuation) {
+                        groupId += 1;
+                        carry = { date, type, num, name };
+                    } else {
+                        date = carry.date;
+                        if (!type) type = carry.type;
+                        if (!num)  num  = carry.num;
+                        if (!name) name = carry.name;
+                    }
+
+                    if ((acct || "").toUpperCase() === "TOTAL") continue;
+
+                    out.push({
+                        TxnGroupId: groupId,
+                        Date: date,
+                        TxnType: type,
+                        Num: num,
+                        Name: name,
+                        Memo: memo,
+                        Account: acct,
+                        Debit: debit,
+                        Credit: credit
+                    });
+                }
+                return out;
+            }
+
+            function toCsvRows(objects, headerOrder) {
+                const esc = (s) => `"${String(s ?? "").replace(/"/g,'""')}"`;
+                const header = headerOrder.map(esc).join(",");
+                const lines = objects.map(o => headerOrder.map(k => esc(o[k])).join(","));
+                return [header, ...lines];
+            }
+
+            function summarizeByAccount(lines) {
+                const map = new Map();
+                for (const l of lines) {
+                    const acct = l.Account || "(blank)";
+                    const d = parseFloat(l.Debit || "0") || 0;
+                    const c = parseFloat(l.Credit || "0") || 0;
+                    if (!map.has(acct)) map.set(acct, { Account: acct, Debit:0, Credit:0 });
+                    const agg = map.get(acct);
+                    agg.Debit += d;
+                    agg.Credit += c;
+                }
+                return Array.from(map.values()).map(row => ({
+                    Account: row.Account,
+                    Debit: row.Debit.toFixed(2),
+                    Credit: row.Credit.toFixed(2),
+                    Net: (row.Debit - row.Credit).toFixed(2)
+                }));
+            }
+
+            // Export buttons for JournalReport
+            $("#exportJournalClean").click(function () {
+                if (!reportJsonData) return alert("No report loaded.");
+                const lines = normalizeJournal(reportJsonData);
+                const header = ["Date","TxnType","Num","Name","Memo","Account","Debit","Credit"];
+                const rows = toCsvRows(lines, header);
+                const fname = (reportJsonData.Header?.ReportName || "JournalReport") + "_clean.csv";
+                csvDownload(fname, rows);
+            });
+
+            $("#exportJournalWithGroup").click(function () {
+                if (!reportJsonData) return alert("No report loaded.");
+                const lines = normalizeJournal(reportJsonData);
+                const header = ["TxnGroupId","Date","TxnType","Num","Name","Memo","Account","Debit","Credit"];
+                const rows = toCsvRows(lines, header);
+                const fname = (reportJsonData.Header?.ReportName || "JournalReport") + "_grouped.csv";
+                csvDownload(fname, rows);
+            });
+
+            $("#exportJournalByAccount").click(function () {
+                if (!reportJsonData) return alert("No report loaded.");
+                const lines = normalizeJournal(reportJsonData);
+                if (!lines.length) return alert("No data to summarize.");
+                const summary = summarizeByAccount(lines);
+                const header = ["Account","Debit","Credit","Net"];
+                const rows = toCsvRows(summary, header);
+                const fname = (reportJsonData.Header?.ReportName || "JournalReport") + "_by_account.csv";
+                csvDownload(fname, rows);
             });
         });
 

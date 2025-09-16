@@ -33,7 +33,7 @@ Route::get('/privacy-policy', function () {
 
 Route::get('/dashboard', function () {
     return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+})->middleware(['auth'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -63,7 +63,6 @@ Route::middleware('auth')->group(function () {
 
 });
 
-Route::get('/qbo/reports/{reportName}', [QuickBooksReportController::class, 'fetchReport'])->name('qbo.report');
 
 
 require __DIR__.'/auth.php';
