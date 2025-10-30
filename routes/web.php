@@ -11,6 +11,10 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/transaction-list-flattened-csv', [QuickBooksReportController::class, 'exportTransactionListFlattened'])
+  ->middleware(CheckSecretHeader::class)
+ ->name('transaction.list.flattened.csv');
+
 Route::get('/balance-sheet-flattened', [QuickBooksReportController::class, 'fetchBalanceSheetFlattened'])
   ->middleware(CheckSecretHeader::class)
  ->name('balance.sheet.flattened');

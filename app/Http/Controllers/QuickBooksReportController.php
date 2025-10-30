@@ -591,7 +591,191 @@ public function fetchProfitAndLossDetailall(Request $request)
 
 
 
+    /**
+     * ========= NEW: TransactionList CSV (flattened like Balance Sheet) =========
+     * Streams a CSV with up to 4 section levels, row type, and all QBO data columns.
+     *
+     * Query parameters:
+     *  - Any official TransactionList params (start_date, end_date, group_by, etc.)
+     *  - include_headers (true|false)  -> include section header rows
+     *  - include_summaries (true|false)-> include section summary rows
+     */
+    public function exportTransactionListFlattened(Request $request)
+    {
+        // 1) Token lookup
+        $token = QuickBooksToken::first();
+        if (!$token) {
+            return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
+        }
 
+        $realmId     = Crypt::decryptString($token->realm_id);
+        $accessToken = $token->access_token;
+
+        // 2) Refresh if needed
+        if (Carbon::now()->greaterThan($token->expires_at)) {
+            if (!$this->refreshToken()) {
+                return response()->json(['error' => 'Failed to refresh token'], 401);
+            }
+            $token = QuickBooksToken::first();
+            $accessToken = $token->access_token;
+        }
+
+        // 3) Allowed TransactionList query params (from docs)
+        $allowedParams = [
+            'date_macro','payment_method','duedate_macro','arpaid','bothamount','transaction_type',
+            'docnum','start_moddate','source_account_type','group_by','start_date','department',
+            'start_duedate','columns','end_duedate','vendor','end_date','memo','appaid',
+            'moddate_macro','printed','createdate_macro','cleared','customer','qzurl','term',
+            'end_createdate','name','sort_by','sort_order','start_createdate','end_moddate'
+        ];
+
+        $queryParams = $request->only($allowedParams);
+
+        // Defaults if no explicit date_macro provided
+        if (!isset($queryParams['start_date']) && !isset($queryParams['date_macro'])) {
+            $queryParams['start_date'] = '2025-01-01';
+        }
+        if (!isset($queryParams['end_date']) && !isset($queryParams['date_macro'])) {
+            $queryParams['end_date'] = '2025-12-31';
+        }
+        if (!isset($queryParams['group_by'])) {
+            $queryParams['group_by'] = 'Customer';
+        }
+
+        // Output toggles (NOT sent to QBO)
+        $includeSummaries = filter_var($request->query('include_summaries', 'true'), FILTER_VALIDATE_BOOLEAN);
+        $includeHeaders   = filter_var($request->query('include_headers', 'false'), FILTER_VALIDATE_BOOLEAN);
+
+        // 4) Call QBO
+        $url = $this->getBaseUrl() . "/v3/company/{$realmId}/reports/TransactionList";
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Accept'        => 'application/json'
+        ])->get($url, $queryParams);
+
+        $intuitTid = $response->header('intuit_tid');
+
+        if ($response->failed()) {
+            return response()->json([
+                'error'      => 'Failed to fetch TransactionList',
+                'details'    => $response->json(),
+                'intuit_tid' => $intuitTid
+            ], 400);
+        }
+
+        $report = $response->json();
+
+        // 5) QBO dynamic columns
+        $columns     = $report['Columns']['Column'] ?? [];
+        $columnCount = count($columns);
+        $dataHeaders = array_map(fn($c) => $c['ColTitle'] ?? '', $columns);
+
+        // 6) CSV header: section levels + row type + QBO columns
+        $csvHeader = array_merge(
+            ['Group Level 1', 'Group Level 2', 'Group Level 3', 'Group Level 4', 'Row Type'],
+            $dataHeaders
+        );
+
+        // 7) Flatten rows
+        $flat = [];
+        if (isset($report['Rows'])) {
+            $this->flattenTransactionListRows(
+                $report['Rows'],
+                [],
+                $columnCount,
+                $flat,
+                $includeHeaders,
+                $includeSummaries
+            );
+        }
+
+        // 8) Stream CSV
+        $filename = "Transaction_List_Flattened.csv";
+        $headers  = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'intuit_tid'          => $intuitTid ?? ''
+        ];
+
+        return response()->stream(function () use ($csvHeader, $flat) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $csvHeader);
+
+            foreach ($flat as $row) {
+                foreach ($row as &$cell) {
+                    if (is_string($cell)) {
+                        $cell = str_replace(["\r", "\n"], ' ', $cell);
+                    }
+                }
+                fputcsv($out, $row);
+            }
+
+            fclose($out);
+        }, 200, $headers);
+    }
+
+    /**
+     * Recursively flattens the nested "Rows" structure of a TransactionList report.
+     * Outputs: [Level1, Level2, Level3, Level4, RowType, <QBO ColData...>]
+     * RowType ∈ {"Header","Data","Summary"}; headers/summaries optional via flags.
+     */
+    private function flattenTransactionListRows(
+        array $rowsNode,
+        array $hierarchy,
+        int $columnCount,
+        array &$out,
+        bool $includeHeaders = false,
+        bool $includeSummaries = true
+    ): void {
+        if (!isset($rowsNode['Row'])) {
+            return;
+        }
+
+        foreach ($rowsNode['Row'] as $node) {
+            $currentHierarchy = $hierarchy;
+
+            // Section header → extend hierarchy with first ColData value
+            if (isset($node['Header']['ColData'][0]['value']) && $node['Header']['ColData'][0]['value'] !== '') {
+                $currentHierarchy[] = $node['Header']['ColData'][0]['value'];
+
+                if ($includeHeaders) {
+                    $levels = $this->padLevels($currentHierarchy, 4);
+                    $out[]  = array_merge($levels, ['Header'], array_fill(0, $columnCount, ''));
+                }
+            }
+
+            // Nested rows
+            if (isset($node['Rows'])) {
+                $this->flattenTransactionListRows($node['Rows'], $currentHierarchy, $columnCount, $out, $includeHeaders, $includeSummaries);
+            }
+
+            // Data line
+            if (isset($node['ColData'])) {
+                $levels  = $this->padLevels($currentHierarchy, 4);
+                $dataRow = $this->colDataToCsvRow($node['ColData'], $columnCount);
+                $out[]   = array_merge($levels, ['Data'], $dataRow);
+            }
+
+            // Summary line
+            if ($includeSummaries && isset($node['Summary']['ColData'])) {
+                $levels     = $this->padLevels($currentHierarchy, 4);
+                $summaryRow = $this->colDataToCsvRow($node['Summary']['ColData'], $columnCount);
+                $out[]      = array_merge($levels, ['Summary'], $summaryRow);
+            }
+        }
+    }
+
+    /**
+     * Pads an array of hierarchy levels to exactly $n items.
+     */
+    private function padLevels(array $levels, int $n): array
+    {
+        while (count($levels) < $n) {
+            $levels[] = '';
+        }
+        return array_slice($levels, 0, $n);
+    }
 
 
 
