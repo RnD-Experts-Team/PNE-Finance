@@ -638,9 +638,7 @@ public function fetchProfitAndLossDetailall(Request $request)
         if (!isset($queryParams['end_date']) && !isset($queryParams['date_macro'])) {
             $queryParams['end_date'] = '2025-12-31';
         }
-        if (!isset($queryParams['group_by'])) {
-            $queryParams['group_by'] = 'Customer';
-        }
+
 
         // Output toggles (NOT sent to QBO)
         $includeSummaries = filter_var($request->query('include_summaries', 'true'), FILTER_VALIDATE_BOOLEAN);
