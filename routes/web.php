@@ -15,6 +15,11 @@ Route::get('/transaction-list-flattened-csv', [QuickBooksReportController::class
   ->middleware(CheckSecretHeader::class)
  ->name('transaction.list.flattened.csv');
 
+ Route::get('/export-journal-flattened', [QuickBooksReportController::class, 'exportJournalReportFlattened'])
+  ->middleware(CheckSecretHeader::class)
+ ->name('journal.flattened.csv');
+
+
 Route::get('/balance-sheet-flattened', [QuickBooksReportController::class, 'fetchBalanceSheetFlattened'])
   ->middleware(CheckSecretHeader::class)
  ->name('balance.sheet.flattened');

@@ -780,7 +780,191 @@ public function fetchProfitAndLossDetailall(Request $request)
 
 
 
+ /**
+     * ========= NEW: JournalReport CSV (flattened like TransactionList) =========
+     * Streams a CSV with up to 4 group levels, row type, and all QBO data columns.
+     *
+     * Query parameters (sent to QBO):
+     *  - start_date, end_date, date_macro, sort_by, sort_order, columns
+     *
+     * Output toggles (NOT sent to QBO):
+     *  - include_headers (true|false)   -> include section header rows if present
+     *  - include_summaries (true|false) -> include summary rows
+     */
+    public function exportJournalReportFlattened(Request $request)
+    {
+        // 1) Token lookup
+        $token = QuickBooksToken::first();
+        if (!$token) {
+            return response()->json(['error' => 'QuickBooks is not connected. Please connect first.'], 401);
+        }
 
+        $realmId     = Crypt::decryptString($token->realm_id);
+        $accessToken = $token->access_token;
+
+        // 2) Refresh if needed
+        if (Carbon::now()->greaterThan($token->expires_at)) {
+            if (!$this->refreshToken()) {
+                return response()->json(['error' => 'Failed to refresh token'], 401);
+            }
+            $token = QuickBooksToken::first();
+            $accessToken = $token->access_token;
+        }
+
+        // 3) Allowed JournalReport query params (from docs)
+        $allowedParams = [
+            'start_date',
+            'end_date',
+            'date_macro',
+            'sort_by',
+            'sort_order',
+            'columns',
+        ];
+
+        $queryParams = $request->only($allowedParams);
+
+        // Defaults if no explicit date_macro provided
+        if (!isset($queryParams['start_date']) && !isset($queryParams['date_macro'])) {
+            $queryParams['start_date'] = '2025-01-01';
+        }
+        if (!isset($queryParams['end_date']) && !isset($queryParams['date_macro'])) {
+            $queryParams['end_date'] = '2025-12-31';
+        }
+
+        // Output toggles (NOT sent to QBO)
+        $includeSummaries = filter_var($request->query('include_summaries', 'true'), FILTER_VALIDATE_BOOLEAN);
+        $includeHeaders   = filter_var($request->query('include_headers', 'false'), FILTER_VALIDATE_BOOLEAN);
+
+        // 4) Call QBO
+        $url = $this->getBaseUrl() . "/v3/company/{$realmId}/reports/JournalReport";
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . $accessToken,
+            'Accept'        => 'application/json'
+        ])->get($url, $queryParams);
+
+        $intuitTid = $response->header('intuit_tid');
+
+        if ($response->failed()) {
+            return response()->json([
+                'error'      => 'Failed to fetch JournalReport',
+                'details'    => $response->json(),
+                'intuit_tid' => $intuitTid
+            ], 400);
+        }
+
+        $report = $response->json();
+
+        // 5) QBO dynamic columns
+        $columns     = $report['Columns']['Column'] ?? [];
+        $columnCount = count($columns);
+        $dataHeaders = array_map(fn($c) => $c['ColTitle'] ?? '', $columns);
+
+        // 6) CSV header: group levels + row type + QBO columns
+        $csvHeader = array_merge(
+            ['Group Level 1', 'Group Level 2', 'Group Level 3', 'Group Level 4', 'Row Type'],
+            $dataHeaders
+        );
+
+        // 7) Flatten rows
+        $flat = [];
+        if (isset($report['Rows'])) {
+            $this->flattenJournalReportRows(
+                $report['Rows'],
+                [],
+                $columnCount,
+                $flat,
+                $includeHeaders,
+                $includeSummaries
+            );
+        }
+
+        // 8) Stream CSV
+        $filename = "Journal_Report_Flattened.csv";
+        $headers  = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'intuit_tid'          => $intuitTid ?? ''
+        ];
+
+        return response()->stream(function () use ($csvHeader, $flat) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, $csvHeader);
+
+            foreach ($flat as $row) {
+                foreach ($row as &$cell) {
+                    if (is_string($cell)) {
+                        $cell = str_replace(["\r", "\n"], ' ', $cell);
+                    }
+                }
+                fputcsv($out, $row);
+            }
+
+            fclose($out);
+        }, 200, $headers);
+    }
+
+    /**
+     * Recursively flattens the nested "Rows" structure of a JournalReport.
+     * Outputs: [Level1, Level2, Level3, Level4, RowType, <QBO ColData...>]
+     * RowType ∈ {"Header","Data","Summary"}; headers/summaries optional via flags.
+     *
+     * Note: JournalReport is usually flat (no nested groups), but this safely handles
+     * Section headers, summaries, and nested Rows if Intuit returns them.
+     */
+    private function flattenJournalReportRows(
+        array $rowsNode,
+        array $hierarchy,
+        int $columnCount,
+        array &$out,
+        bool $includeHeaders = false,
+        bool $includeSummaries = true
+    ): void {
+        if (!isset($rowsNode['Row'])) {
+            return;
+        }
+
+        foreach ($rowsNode['Row'] as $node) {
+            $currentHierarchy = $hierarchy;
+
+            // If Intuit returns a Section Header (rare for JournalReport),
+            // use it as a group level like TransactionList.
+            if (isset($node['Header']['ColData'][0]['value']) && $node['Header']['ColData'][0]['value'] !== '') {
+                $currentHierarchy[] = $node['Header']['ColData'][0]['value'];
+
+                if ($includeHeaders) {
+                    $levels = $this->padLevels($currentHierarchy, 4);
+                    $out[]  = array_merge($levels, ['Header'], array_fill(0, $columnCount, ''));
+                }
+            }
+
+            // Nested rows (just in case)
+            if (isset($node['Rows'])) {
+                $this->flattenJournalReportRows(
+                    $node['Rows'],
+                    $currentHierarchy,
+                    $columnCount,
+                    $out,
+                    $includeHeaders,
+                    $includeSummaries
+                );
+            }
+
+            // Data lines (JournalReport rows are mostly type=Data with ColData)
+            if (isset($node['ColData'])) {
+                $levels  = $this->padLevels($currentHierarchy, 4);
+                $dataRow = $this->colDataToCsvRow($node['ColData'], $columnCount);
+                $out[]   = array_merge($levels, ['Data'], $dataRow);
+            }
+
+            // Summary lines typically appear on Section nodes
+            if ($includeSummaries && isset($node['Summary']['ColData'])) {
+                $levels     = $this->padLevels($currentHierarchy, 4);
+                $summaryRow = $this->colDataToCsvRow($node['Summary']['ColData'], $columnCount);
+                $out[]      = array_merge($levels, ['Summary'], $summaryRow);
+            }
+        }
+    }
 
 
 
